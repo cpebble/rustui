@@ -1,0 +1,12 @@
+[package]
+name = "rustui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossterm = "0.25"
+ratatui = "0.29.0"
+
+[lints.rust]
+unused_variables = "allow"
+unused_imports = "allow"
