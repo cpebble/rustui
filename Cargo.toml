@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 crossterm = "0.25"
+pipewire = "0.8.0"
 ratatui = "0.29.0"
 
 [lints.rust]
 unused_variables = "allow"
 unused_imports = "allow"
+dead_code = "allow"
