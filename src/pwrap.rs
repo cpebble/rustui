@@ -8,14 +8,8 @@ use pipewire::{
     channel::channel as pchannel, channel::Receiver as PReceiver, channel::Sender as PSender,
     context::Context, core::Core, main_loop::MainLoop,
 };
+use crate::chwrap::Cmd;
 
-#[derive(Debug)]
-pub enum Cmd {
-    Terminate,
-    IsUp,
-    IsDown,
-    Msg(String),
-}
 #[derive(Debug)]
 pub struct Pipewire {
     ml: MainLoop,

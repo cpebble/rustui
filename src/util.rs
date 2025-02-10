@@ -3,13 +3,13 @@ use std::{
     cmp::max,
     io::{self},
     iter::zip,
-    sync::mpsc::Receiver,
+    sync::mpsc::{channel, Receiver, Sender},
     thread::{self, sleep},
     time::Duration,
 };
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use pipewire::{channel::Sender, context::Context, core::Core, main_loop::MainLoop};
+use pipewire::{channel::Sender as PSender, context::Context, core::Core, main_loop::MainLoop};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -20,10 +20,11 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
-use crate::pwrap::{Cmd, Pipewire};
+use crate::pwrap::Pipewire;
+use crate::chwrap::Cmd;
 
 static UPS: usize = 10;
-static MS_PER_UPD: Duration = Duration::from_millis(1000/UPS as u64);
+static MS_PER_UPD: Duration = Duration::from_millis(1000 / UPS as u64);
 
 pub struct App {
     counter: u8,
@@ -31,7 +32,7 @@ pub struct App {
     exit: bool,
     idle: bool,
     sources: Vec<usize>,
-    pw_send: Sender<Cmd>,
+    pw_send: PSender<Cmd>,
     pw_recv: Receiver<Cmd>,
     messages: Vec<String>,
 }
@@ -74,7 +75,7 @@ impl App {
         match self.pw_recv.try_recv() {
             Ok(msg) => self.handle_pw_cmd(msg),
             Err(std::sync::mpsc::TryRecvError::Empty) => (),
-            Err(e) => self.handle_pw_cmd(Cmd::IsDown)
+            Err(e) => self.handle_pw_cmd(Cmd::IsDown),
         }
         // Source stuff
         self.sources = (0..self.counter)
@@ -190,9 +191,8 @@ impl Widget for &App {
             .collect::<List>()
             .block(msgblock)
             .direction(ratatui::widgets::ListDirection::TopToBottom);
-        let listoffset = clamped_subtraction(
-            clamped_subtraction(self.messages.len() , nmsg as usize), 1
-        );
+        let listoffset =
+            clamped_subtraction(clamped_subtraction(self.messages.len(), nmsg as usize), 1);
         //let listoffset = 0;
         StatefulWidget::render(
             msgs,
@@ -226,4 +226,19 @@ pub fn clamped_subtraction(a: usize, b: usize) -> usize {
     }
 }
 
-pub fn clamp(n: usize, ma: usize, mi: usize) {}
+
+fn ui_thread_wrapper(sendchannel: Sender<Cmd>) {
+
+    //while event::poll(Duration::from_secs(0))? {
+        //match event::read()? {
+            //// it's important to check that the event is a key press event as
+            //// crossterm also emits key release and repeat events on Windows.
+            //Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                //self.handle_key_event(key_event)
+            //}
+            //_ => {}
+        //}
+    //}
+    //Ok(())
+}
+
