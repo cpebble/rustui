@@ -3,7 +3,7 @@ use std::{
     cmp::max,
     io::{self},
     iter::zip,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender},
     thread::{self, sleep},
     time::Duration,
 };
@@ -20,10 +20,10 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
+use crate::cmds::{combine_receivers, Cmd};
 use crate::pwrap::Pipewire;
-use crate::chwrap::Cmd;
 
-static UPS: usize = 10;
+static UPS: usize = 1;
 static MS_PER_UPD: Duration = Duration::from_millis(1000 / UPS as u64);
 
 pub struct App {
@@ -33,13 +33,19 @@ pub struct App {
     idle: bool,
     sources: Vec<usize>,
     pw_send: PSender<Cmd>,
-    pw_recv: Receiver<Cmd>,
+    receiver: Receiver<Cmd>,
     messages: Vec<String>,
 }
 
 impl App {
     pub fn new() -> App {
+        // Setup a pipewire instance
         let (pw_send, pw_recv) = Pipewire::spawn().expect("Pw init failed");
+        // Setup a channel to receive ui events
+        let (ui_send, ui_recv) = channel();
+        terminal_eventthread(ui_send);
+        // Tie the receivers together
+        let recver = combine_receivers(pw_recv, ui_recv);
         App {
             counter: 1,
             idle: true,
@@ -47,7 +53,7 @@ impl App {
             exit: false,
             sources: Vec::new(),
             pw_send,
-            pw_recv,
+            receiver: recver,
             messages: vec!["App initialized".to_string()],
         }
     }
@@ -59,9 +65,6 @@ impl App {
             self.update()?;
             // Draw ui
             terminal.draw(|frame| self.draw(frame))?;
-
-            // Note: We can't just sleep. We should probably have some sort of interrupt handler.
-            sleep(MS_PER_UPD);
         }
         ratatui::restore();
         for m in &self.messages {
@@ -71,27 +74,19 @@ impl App {
     }
 
     fn update(&mut self) -> io::Result<()> {
-        // Check for msgs
-        match self.pw_recv.try_recv() {
-            Ok(msg) => self.handle_pw_cmd(msg),
-            Err(std::sync::mpsc::TryRecvError::Empty) => (),
-            Err(e) => self.handle_pw_cmd(Cmd::IsDown),
+        match self.receiver.recv_timeout(MS_PER_UPD) {
+            Ok(c) => Ok(self.handle_cmd(c)),
+            Err(RecvTimeoutError::Timeout) => Ok(()),
+            // TODO: Proper error bubbling
+            Err(_) => panic!("Receiver closed unexpectedly"),
         }
-        // Source stuff
-        self.sources = (0..self.counter)
-            .map(|c| c as usize)
-            .collect::<Vec<usize>>();
-
-        // Handle keyboard events
-        self.handle_events()?;
-        Ok(())
     }
 
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
 
-    fn handle_pw_cmd(&mut self, cmd: Cmd) {
+    fn handle_cmd(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::Terminate => (),
             Cmd::IsUp => (),
@@ -103,21 +98,9 @@ impl App {
                     panic!("Pipewire wen't down unexpectedly")
                 }
             }
+            Cmd::KeyPress(kp) => self.handle_key_event(kp),
             Cmd::Msg(s) => self.messages.push(s),
         }
-    }
-    fn handle_events(&mut self) -> io::Result<()> {
-        while event::poll(Duration::from_secs(0))? {
-            match event::read()? {
-                // it's important to check that the event is a key press event as
-                // crossterm also emits key release and repeat events on Windows.
-                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                    self.handle_key_event(key_event)
-                }
-                _ => {}
-            }
-        }
-        Ok(())
     }
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
@@ -226,19 +209,13 @@ pub fn clamped_subtraction(a: usize, b: usize) -> usize {
     }
 }
 
-
-fn ui_thread_wrapper(sendchannel: Sender<Cmd>) {
-
-    //while event::poll(Duration::from_secs(0))? {
-        //match event::read()? {
-            //// it's important to check that the event is a key press event as
-            //// crossterm also emits key release and repeat events on Windows.
-            //Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                //self.handle_key_event(key_event)
-            //}
-            //_ => {}
-        //}
-    //}
-    //Ok(())
+fn terminal_eventthread(sendchannel: Sender<Cmd>) {
+    thread::spawn(move || loop {
+        let Ok(ev) = event::read() else {
+            break;
+        };
+        if let Event::Key(key_event) = ev {
+            sendchannel.send(Cmd::KeyPress(key_event)).unwrap()
+        }
+    });
 }
-

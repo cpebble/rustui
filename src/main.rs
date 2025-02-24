@@ -1,8 +1,8 @@
-mod util;
+mod app;
 mod pwrap;
-mod chwrap;
+mod cmds;
 use std::{io, thread, time::Duration};
-use util::App;
+use app::App;
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},

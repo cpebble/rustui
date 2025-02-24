@@ -4,11 +4,11 @@ use std::{
     time::Duration,
 };
 
+use crate::cmds::Cmd;
 use pipewire::{
     channel::channel as pchannel, channel::Receiver as PReceiver, channel::Sender as PSender,
     context::Context, core::Core, main_loop::MainLoop,
 };
-use crate::chwrap::Cmd;
 
 #[derive(Debug)]
 pub struct Pipewire {
@@ -65,25 +65,15 @@ impl Pipewire {
         let _receiver = recv.attach(pw.ml.loop_(), {
             let mainloop = pw.ml.clone();
             let send = send.clone();
-            move |cmd| match cmd {
-                Cmd::Terminate => {
+            move |cmd| {
+                if let Cmd::Terminate = cmd {
                     mainloop.quit();
                     send.send(Cmd::IsDown).unwrap()
                 }
-                _ => (),
             }
         });
 
-        let _ = send.send(Cmd::IsUp);
-        // Every 100ms, send `"Hello"` to the main thread.
-        //let timer = pw.ml.loop_().add_timer(move |_| {
-            //send.send(Cmd::Msg(String::from("Hello")));
-        //});
-        //timer.update_timer(
-            //Some(Duration::from_millis(1)), // Send the first message immediately
-            //Some(Duration::from_millis(100)),
-        //);
-
+        send.send(Cmd::IsUp).unwrap();
         pw.ml.run();
     }
 }
